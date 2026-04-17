@@ -1,0 +1,39 @@
+name: ✈️ Daily Air India ORD→BLR Fare Check
+
+on:
+  schedule:
+    # Runs every day at 13:00 UTC = 8:00 AM CST / 7:00 AM CDT (Chicago time)
+    - cron: '0 13 * * *'
+  workflow_dispatch:        # ← lets you trigger manually from GitHub UI anytime
+
+jobs:
+  check-fares:
+    name: Fetch & Email Cheapest Fares
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run fare checker
+        env:
+          AMADEUS_API_KEY:    ${{ secrets.AMADEUS_API_KEY }}
+          AMADEUS_API_SECRET: ${{ secrets.AMADEUS_API_SECRET }}
+          SMTP_USER:          ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:      ${{ secrets.SMTP_PASSWORD }}
+        run: python flight_checker.py
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Fare checker failed — check Amadeus API limits or SMTP credentials."
