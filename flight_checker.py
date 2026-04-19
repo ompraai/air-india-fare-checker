@@ -16,7 +16,7 @@ from email.mime.text import MIMEText
 SERPAPI_KEY   = os.environ["SERPAPI_KEY"]
 SMTP_USER     = os.environ["SMTP_USER"]
 SMTP_PASSWORD = os.environ["SMTP_PASSWORD"]
-TO_EMAIL      = "om.prakash@riversideinsights.com"
+TO_EMAIL      = os.environ["TO_EMAIL"]
 
 ORIGIN        = "ORD"
 DESTINATION   = "BLR"
@@ -40,7 +40,11 @@ def search_flights(departure_date: str) -> list:
         "hl": "en",
         "api_key": SERPAPI_KEY,
     }
-    resp = requests.get(SERPAPI_URL, params=params, timeout=20)
+    try:
+        resp = requests.get(SERPAPI_URL, params=params, timeout=20)
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] Request failed for {departure_date}: {e}")
+        return []
     if resp.status_code != 200:
         print(f"[WARN] {resp.status_code} for {departure_date}")
         return []
@@ -63,7 +67,7 @@ def extract_air_india(flights: list, departure_date: str):
         mins = flight.get("total_duration", 0)
         dur  = f"{mins//60}h {mins%60}m" if mins else "N/A"
         stops = len(legs) - 1
-        via   = [leg["arrival_airport"]["id"] for leg in legs[:-1]]
+        via   = [leg.get("arrival_airport", {}).get("id", "") for leg in legs[:-1]]
         r = {
             "date": departure_date,
             "price": float(price),
@@ -71,8 +75,8 @@ def extract_air_india(flights: list, departure_date: str):
             "duration": dur,
             "stops": stops,
             "via": via,
-            "dep_time": legs[0]["departure_airport"].get("time", ""),
-            "arr_time": legs[-1]["arrival_airport"].get("time", ""),
+            "dep_time": legs[0].get("departure_airport", {}).get("time", ""),
+            "arr_time": legs[-1].get("arrival_airport", {}).get("time", ""),
         }
         if best is None or r["price"] < best["price"]:
             best = r
@@ -162,10 +166,13 @@ def send_email(results: list) -> None:
     msg["To"]      = TO_EMAIL
     msg.attach(MIMEText(build_html(results), "html"))
     print(f"\nSending to {TO_EMAIL}...")
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(SMTP_USER, SMTP_PASSWORD)
-        s.sendmail(SMTP_USER, TO_EMAIL, msg.as_string())
-    print("✓ Email sent.")
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+            s.login(SMTP_USER, SMTP_PASSWORD)
+            s.sendmail(SMTP_USER, TO_EMAIL, msg.as_string())
+        print("✓ Email sent.")
+    except smtplib.SMTPException as e:
+        raise RuntimeError(f"Failed to send email: {e}") from e
 
 
 if __name__ == "__main__":
