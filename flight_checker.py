@@ -42,13 +42,14 @@ def search_flights(departure_date: str) -> list:
     }
     try:
         resp = requests.get(SERPAPI_URL, params=params, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
     except requests.exceptions.RequestException as e:
         print(f"[WARN] Request failed for {departure_date}: {e}")
         return []
-    if resp.status_code != 200:
-        print(f"[WARN] {resp.status_code} for {departure_date}")
+    except ValueError as e:
+        print(f"[WARN] Bad JSON for {departure_date}: {e}")
         return []
-    data = resp.json()
     return data.get("best_flights", []) + data.get("other_flights", [])
 
 
@@ -68,6 +69,7 @@ def extract_air_india(flights: list, departure_date: str):
         dur  = f"{mins//60}h {mins%60}m" if mins else "N/A"
         stops = len(legs) - 1
         via   = [leg.get("arrival_airport", {}).get("id", "") for leg in legs[:-1]]
+        via   = [a for a in via if a]
         r = {
             "date": departure_date,
             "price": float(price),
